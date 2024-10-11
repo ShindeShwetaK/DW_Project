@@ -58,10 +58,9 @@ def return_last_90d_price(symbol):
 def create_load_incremental(records):
     staging_table = "dev.stock.merck_stock_stage"
     target_table = "dev.stock.merck_stock_price_incremental"
-    conn=return_snowflake_conn()
+    conn = return_snowflake_conn()
     try:
-       with conn.cursor() as cursor:
-          cursor.execute(f"""
+       conn.execute(f"""
                CREATE TABLE IF NOT EXISTS {target_table} (
                    date DATE PRIMARY KEY NOT NULL,
                    open DECIMAL(10, 2) NOT NULL,
@@ -73,7 +72,7 @@ def create_load_incremental(records):
                          );
                          """)
           ## Create or replace the staging table
-          cursor.execute(f"""
+       conn.execute(f"""
              CREATE OR REPLACE TABLE {staging_table} (
                    date DATE  PRIMARY KEY NOT NULL,
                    open DECIMAL(10, 2) NOT NULL,
@@ -86,7 +85,7 @@ def create_load_incremental(records):
                          """)
 
           # Insert records into the staging table
-          for r in records:
+       for r in records:
               open = r["1. open"]
               high = r["2. high"]
               low = r["3. low"]
@@ -95,9 +94,9 @@ def create_load_incremental(records):
               date=r['date']
               symbol=r['symbol']
               insert_sql = f"INSERT INTO {staging_table} (date, open, high, low, close, volume, symbol) VALUES ('{date}',{open}, {high}, {low}, {close}, {volume}, '{symbol}')"
-              cursor.execute(insert_sql) # Execute within the with block
+              conn.execute(insert_sql) # Execute within the with block
 
-       conn.commit()
+       conn.execute("COMMIT;")  
 
         # perform UPSERT
        upsert_sql = f"""
@@ -118,12 +117,12 @@ def create_load_incremental(records):
                 VALUES (stage.date,stage.open, stage.high, stage.low, stage.close, stage.volume, stage.symbol)
                  """
 
-       with conn.cursor() as cursor: # Open a new cursor for the upsert operation
-           cursor.execute(upsert_sql)
+       conn.execute(upsert_sql)
        #Commit the change
-       conn.commit()
+       conn.execute("COMMIT;")  
        print(f"Stage Table {staging_table}, Target table create '{target_table}', Data loaded successfully in both the tables using Incremental Load ")
     except Exception as e:
+        conn.execute("ROLLBACK;")
         print(e)
         raise e
 
@@ -132,12 +131,11 @@ def create_load_incremental(records):
 #Step 2: Once the table is created again we will insert the records again from initial.
 
 @task
-def create_load_full(conn, records):
+def create_load_full(records):
     target_table = "dev.stock.merck_stock_price_full"
-    conn=return_snowflake_conn()
+    conn = return_snowflake_conn()
     try:
-       with conn.cursor() as cursor:
-          cursor.execute(f"""
+       conn.execute(f"""
                CREATE OR REPLACE TABLE  {target_table} (
                    date DATE PRIMARY KEY NOT NULL,
                    open DECIMAL(10, 2) NOT NULL,
@@ -150,7 +148,7 @@ def create_load_full(conn, records):
                          """)
 
           # Insert records into the staging table
-          for r in records:
+       for r in records:
               open = r["1. open"]
               high = r["2. high"]
               low = r["3. low"]
@@ -159,23 +157,26 @@ def create_load_full(conn, records):
               date=r['date']
               symbol=r['symbol']
               insert_sql = f"INSERT INTO {target_table} (date, open, high, low, close, volume, symbol) VALUES ('{date}',{open}, {high}, {low}, {close}, {volume}, '{symbol}')"
-              cursor.execute(insert_sql) # Execute within the with block
+              conn.execute(insert_sql) # Execute within the with block
 
-       conn.commit()
+       conn.execute("COMMIT;")  
        print(f"Target table create '{target_table}', Data loaded successfully in both the tables using full load ")
     except Exception as e:
+        conn.execute("ROLLBACK;")
         print(e)
         raise e
 
 
 with DAG(
-    dag_id = 'Merck_Stock',
+    dag_id = 'Pipeline_Merck_Stock_Price1',
     start_date = datetime(2024,10,10),
     catchup=False,
     tags=['ETL'],
-    schedule = '38 13 * * *'
+    schedule = '@daily'
 ) as dag:
     
     price_list = return_last_90d_price("MRK")
+
     create_load_incremental (price_list)
+
     create_load_full(price_list)
