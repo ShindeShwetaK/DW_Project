@@ -168,7 +168,7 @@ def create_load_full(records):
 
 
 with DAG(
-    dag_id = 'Pipeline_Merck_Stock_Price1',
+    dag_id = 'Pipeline_Merck_Stock_Price_hook',
     start_date = datetime(2024,10,10),
     catchup=False,
     tags=['ETL'],
