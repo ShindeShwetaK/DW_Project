@@ -30,7 +30,7 @@ def return_last_90d_price(symbol):
   """
    - return the last 90 days of the stock prices of symbol as a list of json strings
   """
-  vantage_api_key = Variable.get(apikey)
+  vantage_api_key = Variable.get('apikey')
   url = f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={vantage_api_key}'
   r = requests.get(url)
   data = r.json()
